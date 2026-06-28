@@ -11,8 +11,9 @@
 ---
 
 ## Структура проекта
-* `/parser` — Lexer, parser, and AST definition
-* `/solver` — Kripke models, worlds evaluation, and frame logic
+* `/syntax` - Lexer, parser(логика), and AST definition
+* `/solver` - Kripke models, worlds evaluation, and frame logic
+* `/handler` - parser
 
 ---
 
