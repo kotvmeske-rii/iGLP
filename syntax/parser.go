@@ -1,10 +1,10 @@
 package syntax
 
-//Парсер - собираем дерево AddNote из токенов
-
+//Синтаксический анализ формул рекурсивным спуском
+//Преобразуем последовательность токенов в ast
 type Parser struct {
 	tokens []Token
-	pos    int //pos??
+	pos    int
 }
 
 func NewParser(tokens []Token) *Parser {
@@ -14,7 +14,6 @@ func NewParser(tokens []Token) *Parser {
 	}
 }
 
-//??????????????? токен на этой позиции??
 func (p *Parser) current() Token {
 	if p.pos >= len(p.tokens) {
 		return Token{Type: TokEOF}
@@ -22,11 +21,11 @@ func (p *Parser) current() Token {
 	return p.tokens[p.pos]
 }
 
-//???????? позиция??
 func (p *Parser) consume() {
 	p.pos++
 }
 
+// Операции расположены по приоритету, от меньшего к большему
 //1. Implication
 func (p *Parser) ParseExpression() Node {
 	left := p.parseOr()
@@ -73,6 +72,7 @@ func (p *Parser) parseAnd() Node {
 }
 
 //4. Not and Box
+//Наивысший приоритет среди логических операторов
 func (p *Parser) parseUnary() Node {
 	tok := p.current()
 
