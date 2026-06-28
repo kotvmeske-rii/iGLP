@@ -10,24 +10,25 @@ import (
 	"sync"
 )
 
-// mtx защищает глобальное состояние парсера
-// Примечание: учитывая потокобезопасность синтаксического анализатора
-// в пакете syntax, стоит пересмотреть необходимость глобальной блокировки
-// в пользу локальных экземпляров для повышения пропускной способности
 var mtx sync.Mutex
 
+// Представляет структуру входящего HTTP-запроса с формулой
 type ParserRequest struct {
 	Formula string `json:"formula"`
 }
 
+// Ответ сервера содержит AST, результат проверки на существование контрпримера
+// и граф Крипке
 type ParserResponse struct {
 	Success             bool                `json:"success"`
 	Result              string              `json:"result"`
-	Error               string              `json:"error"` //если ошибка будет "" не пустым
+	Error               string              `json:"error"`
 	ContralExampleCheck bool                `json:"conterexample check"`
 	KripkeGraph         *solver.KripkeFrame `json:"Kripke graph"`
 }
 
+// ParseHandler обрабатывает POST-запросы для лексического анализа,
+// парсинга формулы и поиска контрпримера в моделях Крипке
 func ParseHandler(w http.ResponseWriter, r *http.Request) {
 	var parserRequest ParserRequest
 
@@ -47,29 +48,33 @@ func ParseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Инициализация библиотеки формул и упаковка её в контекст
 	bibliothek := solver.NewFormulaBibliothek()
 	ctx := solver.PackBibliothek(r.Context(), bibliothek)
-	// Блокируем доступ к парсеру, так как текущая реализация
-	// синтаксического анализатора не гарантирует потокобезопасность.
-	mtx.Lock()
-	defer mtx.Unlock()
 
+	// Блокируем доступ к парсеру, так как текущая реализация
+	// синтаксического анализатора хранит внутренее состояние и
+	// не гарантирует потокобезопасность
+	mtx.Lock()
 	tokens := syntax.Lex(parserRequest.Formula)
 	parser := syntax.NewParser(tokens)
-	// Построение AST. В случае некорректной формулы парсер
-	// должен выбрасывать кастомную ошибку, которую мы обработаем отдельно
 	ast := parser.ParseExpression()
+	defer mtx.Unlock()
 
+	//Регистрируем формулу в библиотеке
 	rootFormulaNumber := bibliothek.Bibliothek(ast)
 
+	// Инициализируем контрмодели и создаем корневой мир
 	conterModel := conterexample.NewContermodel()
 	rootNumber := conterModel.NextWorldNumber()
 	rootWorld := conterexample.NewModelWorld(rootNumber)
 
-	//we want refute formula, so we put they in FalseFormula in rootWorld
+	// Пытаемся опровергнуть формулу
+	//Примечание: это стандартный способ поиска контрпримеров в логике доказуемости
 	rootWorld.FalseFormula = append(rootWorld.FalseFormula, rootFormulaNumber)
 	conterModel.Frame.Worlds[rootNumber] = rootWorld
 
+	//проверка общезначимости
 	conterexampleCheck := conterModel.Prove(ctx, rootNumber, nil)
 
 	parserResponse := ParserResponse{
@@ -81,7 +86,6 @@ func ParseHandler(w http.ResponseWriter, r *http.Request) {
 
 	b, err := json.Marshal(parserResponse)
 	if err != nil {
-		// Логируем ошибку на серверную сторону, пользователю возвращаем 500
 		fmt.Println("Ошибка при сериализации ответа:", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
