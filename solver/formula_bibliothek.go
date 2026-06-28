@@ -5,17 +5,20 @@ import (
 	"iglp/syntax"
 )
 
+// Числовой идентификатор формулы
 type FormulaNumber int
 
 type ctxKey struct{}
 
 type FormulaKey struct {
-	Op    syntax.TokenType
-	Name  string
-	Left  FormulaNumber
+	Op    syntax.TokenType // Тип токена
+	Name  string           // только для TokVar
+	Left  FormulaNumber    // Единственный для унарных операций
 	Right FormulaNumber
 }
 
+// Преобразуем структуру ast в числовые ID
+// Можем сравнивать формулы за О(1)
 type FormulaBibliothek struct {
 	keyToNumber  map[FormulaKey]FormulaNumber
 	numberToKey  map[FormulaNumber]FormulaKey
@@ -32,7 +35,7 @@ func NewFormulaBibliothek() *FormulaBibliothek {
 	}
 }
 
-// рекурсивно перекидываем node в number
+// рекурсивно перекидываем узел в кэш библиотеки
 func (f *FormulaBibliothek) Bibliothek(node syntax.Node) FormulaNumber {
 	if node == nil {
 		return 0
@@ -53,6 +56,7 @@ func (f *FormulaBibliothek) Bibliothek(node syntax.Node) FormulaNumber {
 		key.Name = n.Op
 	}
 
+	// Если формула встречалась раньше, возвращаем её ID
 	if number, ext := f.keyToNumber[key]; ext {
 		return number
 	}
@@ -68,11 +72,12 @@ func (f *FormulaBibliothek) Bibliothek(node syntax.Node) FormulaNumber {
 	return number
 }
 
-// O(1)
+// Возвращает FormulaKey за O(1)
 func (f *FormulaBibliothek) Key(number FormulaNumber) FormulaKey {
 	return f.numberToKey[number]
 }
 
+// Возвращает исходный узел за О(1)
 func (f *FormulaBibliothek) Node(number FormulaNumber) syntax.Node {
 	return f.numberToNode[number]
 }
