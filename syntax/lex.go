@@ -1,11 +1,14 @@
 package syntax
 
+//Лексический анализ входящей формулы
 func Lex(input string) []Token {
 	var tokens []Token
-	runes := []rune(input) //[]rune??
+	runes := []rune(input)
 
 	for i := 0; i < len(runes); i++ {
 		ch := runes[i]
+
+		//Пропускаем пробелы
 		if ch == ' ' {
 			continue
 		}
@@ -23,6 +26,7 @@ func Lex(input string) []Token {
 		case ')':
 			tokens = append(tokens, Token{Type: TokRParent})
 		case '-':
+			//Распознаем импликацию
 			if i+1 < len(runes) && runes[i+1] == '>' {
 				tokens = append(tokens, Token{Type: TokImpl})
 				i++
@@ -32,11 +36,13 @@ func Lex(input string) []Token {
 		case '+':
 			tokens = append(tokens, Token{Type: TokTrue})
 		case '[':
+			//Распознаем box
 			if i+1 < len(runes) && runes[i+1] == ']' {
 				tokens = append(tokens, Token{Type: TokBox})
 				i++
 			}
 		default:
+			//Поддерживаются имена в виде строчных латинских букв
 			if ch >= 'a' && ch <= 'z' {
 				tokens = append(tokens, Token{Type: TokVar, Value: string(ch)})
 			}
