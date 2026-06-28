@@ -4,9 +4,10 @@ import "fmt"
 
 type Node interface {
 	Type() TokenType
-	String() string
+	String() string // Возвращает строковое представление формулы
 }
 
+// Логические константы
 type VarConst struct {
 	Op string
 }
@@ -22,6 +23,7 @@ func (v *VarConst) String() string {
 	return v.Op
 }
 
+// Пропозициональная переменная
 type VarNode struct {
 	Name string
 }
@@ -34,9 +36,10 @@ func (v *VarNode) String() string {
 	return v.Name
 }
 
+// Унарные операторы(отрицание и box)
 type UnaryNode struct {
 	Op    string // [] or ~
-	Child Node
+	Child Node   // подформула к которой применяем оператор
 }
 
 func (u *UnaryNode) Type() TokenType {
@@ -51,9 +54,10 @@ func (u *UnaryNode) GetChild() Node {
 }
 
 func (u *UnaryNode) String() string {
-	return fmt.Sprintf("%s(%s)", u.Op, u.Child.String()) //u.Child.String()??
+	return fmt.Sprintf("%s(%s)", u.Op, u.Child.String())
 }
 
+//Бинарные операции(и, или, импликация)
 type BinaryNode struct {
 	Op    string
 	Left  Node
