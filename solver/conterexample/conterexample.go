@@ -30,6 +30,8 @@ func (c *Contermodel) NextWorldNumber() int {
 	return number
 }
 
+// Проверяет текущий мир на наличие явного логического противоречия
+// true - одна и та же формула одновременно находится в списках истинных и ложных
 func (c *Contermodel) Denial(world *solver.ModelWorld) bool {
 	for _, v := range world.TrueFormula {
 		for _, m := range world.FalseFormula {
@@ -46,7 +48,7 @@ func (c *Contermodel) Denial(world *solver.ModelWorld) bool {
 func (c *Contermodel) Prove(ctx context.Context, worldNumber int, history []solver.FormulaNumber) bool {
 	world := c.Frame.Worlds[worldNumber]
 
-	//Step 1: prove denial
+	//Step 1: проверка на логическое противоречие
 	if c.Denial(world) {
 		return false //невозможно чтобы формула в мире была одновременно и верна и не верна
 	}
@@ -56,18 +58,22 @@ func (c *Contermodel) Prove(ctx context.Context, worldNumber int, history []solv
 	//Step 2: local world
 
 	//constants
+
+	//проверка противоречий с константой ложь
 	for _, v := range world.TrueFormula {
 		if bibliothek.Key(v).Op == syntax.TokFalse {
 			return false
 		}
 	}
 
+	//проверка противоречий с константой истина
 	for _, v := range world.FalseFormula {
 		if bibliothek.Key(v).Op == syntax.TokTrue {
 			return false
 		}
 	}
 
+	// Удаление тривиальной константы истина
 	for k, v := range world.TrueFormula {
 		if bibliothek.Key(v).Op == syntax.TokTrue {
 			world.TrueFormula = append(world.TrueFormula[:k], world.TrueFormula[k+1:]...)
@@ -75,6 +81,7 @@ func (c *Contermodel) Prove(ctx context.Context, worldNumber int, history []solv
 		}
 	}
 
+	// Удаление тривиальной константы ложь
 	for k, v := range world.FalseFormula {
 		if bibliothek.Key(v).Op == syntax.TokFalse {
 			world.FalseFormula = append(world.FalseFormula[:k], world.FalseFormula[k+1:]...)
@@ -83,6 +90,7 @@ func (c *Contermodel) Prove(ctx context.Context, worldNumber int, history []solv
 	}
 
 	//true impl
+	//Ветвление на два альтернативных сценария: не A или B
 	for k, v := range world.TrueFormula {
 		key := bibliothek.Key(v)
 		if key.Op == syntax.TokImpl {
@@ -109,6 +117,7 @@ func (c *Contermodel) Prove(ctx context.Context, worldNumber int, history []solv
 	}
 
 	//false impl
+	// Импликация ложна iff A истинно,22 B ложно
 	for k, v := range world.FalseFormula {
 		key := bibliothek.Key(v)
 		if key.Op == syntax.TokImpl {
@@ -151,7 +160,7 @@ func (c *Contermodel) Prove(ctx context.Context, worldNumber int, history []solv
 
 		if key.Op == syntax.TokBox {
 			//иначе мы сломаемся на чём-то вроде формулы Лёба []([]p -> p) -> []p
-			//из-за нехватки памяти, тк цепочка не будет нётеровой
+			//из-за нехватки памяти, тк цепочка не будет нётеровой, что невозможно
 			looped := false
 			for _, h := range history {
 				if h == v {
@@ -169,6 +178,7 @@ func (c *Contermodel) Prove(ctx context.Context, worldNumber int, history []solv
 			//delet box
 			world.FalseFormula = append(world.FalseFormula[:k], world.FalseFormula[k+1:]...)
 
+			// Новый дотижимый мир
 			newNumber := c.NextWorldNumber()
 			newWorld := NewModelWorld(newNumber)
 			newWorld.FalseFormula = append(newWorld.FalseFormula, childNumber, v)
@@ -198,6 +208,7 @@ func (c *Contermodel) Prove(ctx context.Context, worldNumber int, history []solv
 	return true
 }
 
+// Экспортирует построенную шкалу Крипке
 func (c *Contermodel) InputToKripke() *solver.KripkeFrame {
 	frame := &solver.KripkeFrame{
 		Worlds:    make(map[int]*solver.ModelWorld),
