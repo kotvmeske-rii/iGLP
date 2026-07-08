@@ -12,16 +12,3 @@ func NewModelWorld(id int) *solver.ModelWorld {
 		FalseFormula: []solver.FormulaNumber{},
 	}
 }
-
-// clone for backtraking
-func (c *Contermodel) cloneWorld(world *solver.ModelWorld) *solver.ModelWorld {
-	newWorld := NewModelWorld(world.Number)
-	newWorld.TrueFormula = append(newWorld.TrueFormula, world.TrueFormula...)
-	newWorld.FalseFormula = append(newWorld.FalseFormula, world.FalseFormula...)
-
-	for k, v := range world.Valuation {
-		newWorld.Valuation[k] = v
-	}
-
-	return newWorld
-}
