@@ -45,7 +45,7 @@ func (c *Contermodel) Denial(world *solver.ModelWorld) bool {
 
 // true - контпример есть, те есть хотя бы одна открытая ветка,
 // false - контрпримера нет, те все ветки закрыты(логическое противоречие)
-func (c *Contermodel) Prove(ctx context.Context, worldNumber int, history []solver.FormulaNumber) bool {
+func (c *Contermodel) Prove(ctx context.Context, worldNumber int, t int, f int, trace map[solver.FormulaNumber]struct{}) bool {
 	world := c.Frame.Worlds[worldNumber]
 
 	//Step 1: проверка на логическое противоречие
@@ -58,7 +58,6 @@ func (c *Contermodel) Prove(ctx context.Context, worldNumber int, history []solv
 	//Step 2: local world
 
 	//constants
-
 	//проверка противоречий с константой ложь
 	for _, v := range world.TrueFormula {
 		if bibliothek.Key(v).Op == syntax.TokFalse {
@@ -73,110 +72,91 @@ func (c *Contermodel) Prove(ctx context.Context, worldNumber int, history []solv
 		}
 	}
 
-	// Удаление тривиальной константы истина
-	for k, v := range world.TrueFormula {
-		if bibliothek.Key(v).Op == syntax.TokTrue {
-			world.TrueFormula = append(world.TrueFormula[:k], world.TrueFormula[k+1:]...)
-			return c.Prove(ctx, worldNumber, history)
-		}
-	}
-
-	// Удаление тривиальной константы ложь
-	for k, v := range world.FalseFormula {
-		if bibliothek.Key(v).Op == syntax.TokFalse {
-			world.FalseFormula = append(world.FalseFormula[:k], world.FalseFormula[k+1:]...)
-			return c.Prove(ctx, worldNumber, history)
-		}
-	}
-
-	//true impl
-	//Ветвление на два альтернативных сценария: не A или B
-	for k, v := range world.TrueFormula {
+	if t < len(world.TrueFormula) {
+		v := world.TrueFormula[t]
 		key := bibliothek.Key(v)
-		if key.Op == syntax.TokImpl {
-			backup := c.cloneWorld(world)
+
+		switch key.Op {
+		// Удаление тривиальной константы истина
+		case syntax.TokTrue:
+			return c.Prove(ctx, worldNumber, t+1, f, trace)
+		//true impl
+		//Ветвление на два альтернативных сценария: не A или B
+		case syntax.TokImpl:
 			leftKey := key.Left
 			rightKey := key.Right
-
-			//delate impl
-			world.TrueFormula = append(world.TrueFormula[:k], world.TrueFormula[k+1:]...)
 
 			//left false
 			world.FalseFormula = append(world.FalseFormula, leftKey)
-			if c.Prove(ctx, worldNumber, history) {
+			if c.Prove(ctx, worldNumber, t+1, f, trace) {
 				return true
 			}
 
+			world.FalseFormula = world.FalseFormula[:len(world.FalseFormula)-1]
+
 			//right true
-			c.Frame.Worlds[worldNumber] = backup
-			world = c.Frame.Worlds[worldNumber]
-			world.TrueFormula = append(world.TrueFormula[:k], world.TrueFormula[k+1:]...)
 			world.TrueFormula = append(world.TrueFormula, rightKey)
-			return c.Prove(ctx, worldNumber, history)
+			if c.Prove(ctx, worldNumber, t+1, f, trace) {
+				return true
+			}
+
+			world.TrueFormula = world.TrueFormula[:len(world.TrueFormula)-1]
+
+			return false
+		//variate true
+		case syntax.TokVar:
+			world.Valuation[v] = true
+			result := c.Prove(ctx, worldNumber, t+1, f, trace)
+			return result
+		default:
+			return c.Prove(ctx, worldNumber, t+1, f, trace)
 		}
 	}
 
-	//false impl
-	// Импликация ложна iff A истинно,22 B ложно
-	for k, v := range world.FalseFormula {
+	if f < len(world.FalseFormula) {
+		v := world.FalseFormula[f]
 		key := bibliothek.Key(v)
-		if key.Op == syntax.TokImpl {
+
+		switch key.Op {
+		// Удаление тривиальной константы ложь
+		case syntax.TokFalse:
+			return c.Prove(ctx, worldNumber, t, f+1, trace)
+		//false impl
+		// Импликация ложна iff A истинно,22 B ложно
+		case syntax.TokImpl:
 			leftKey := key.Left
 			rightKey := key.Right
 
-			world.FalseFormula = append(world.FalseFormula[:k], world.FalseFormula[k+1:]...)
 			world.TrueFormula = append(world.TrueFormula, leftKey)
 			world.FalseFormula = append(world.FalseFormula, rightKey)
 
-			return c.Prove(ctx, worldNumber, history)
-		}
-	}
+			result := c.Prove(ctx, worldNumber, t, f+1, trace)
 
-	//variate true
-	for k, v := range world.TrueFormula {
-		key := bibliothek.Key(v)
-		if key.Op == syntax.TokVar {
-			world.Valuation[v] = true
-			world.TrueFormula = append(world.TrueFormula[:k], world.TrueFormula[k+1:]...)
-			return c.Prove(ctx, worldNumber, history)
-		}
-	}
+			world.TrueFormula = world.TrueFormula[:len(world.TrueFormula)-1]
+			world.FalseFormula = world.FalseFormula[:len(world.FalseFormula)-1]
 
-	//var false
-	for k, v := range world.FalseFormula {
-		key := bibliothek.Key(v)
-		if key.Op == syntax.TokVar {
+			return result
+		//var false
+		case syntax.TokVar:
 			world.Valuation[v] = false
-			world.FalseFormula = append(world.FalseFormula[:k], world.FalseFormula[k+1:]...)
-			return c.Prove(ctx, worldNumber, history)
+			result := c.Prove(ctx, worldNumber, t, f+1, trace)
+			return result
+		default:
+			return c.Prove(ctx, worldNumber, t, f+1, trace)
 		}
 	}
 
+	box := false
+	endAllBox := true
+
+	continueWorld := make([]int, 0)
 	//Step 3: next world
 	//false box
-	for k, v := range world.FalseFormula {
-
+	for _, v := range world.FalseFormula {
 		key := bibliothek.Key(v)
-
 		if key.Op == syntax.TokBox {
-			//иначе мы сломаемся на чём-то вроде формулы Лёба []([]p -> p) -> []p
-			//из-за нехватки памяти, тк цепочка не будет нётеровой, что невозможно
-			looped := false
-			for _, h := range history {
-				if h == v {
-					looped = true
-					break
-				}
-			}
-
-			if looped {
-				return false
-			}
-
+			box = true
 			childNumber := key.Left
-
-			//delet box
-			world.FalseFormula = append(world.FalseFormula[:k], world.FalseFormula[k+1:]...)
 
 			// Новый дотижимый мир
 			newNumber := c.NextWorldNumber()
@@ -184,25 +164,45 @@ func (c *Contermodel) Prove(ctx context.Context, worldNumber int, history []solv
 			newWorld.FalseFormula = append(newWorld.FalseFormula, childNumber, v)
 
 			//if in w_0 []B - true => in w_1 B, []B - true
-			for _, v := range world.TrueFormula {
-				trueKey := bibliothek.Key(v)
+			for _, va := range world.TrueFormula {
+				trueKey := bibliothek.Key(va)
 
 				if trueKey.Op == syntax.TokBox {
-					newWorld.TrueFormula = append(newWorld.TrueFormula, trueKey.Left, v)
+					newWorld.TrueFormula = append(newWorld.TrueFormula, trueKey.Left, va)
 				}
 			}
 
+			newWorld.TrueFormula = append(newWorld.TrueFormula, v)
+
 			c.Frame.Worlds[newNumber] = newWorld
 			c.Frame.Relations[worldNumber] = append(c.Frame.Relations[worldNumber], newNumber)
-
-			newHistory := append(history, v)
-
-			if c.Prove(ctx, newNumber, newHistory) {
-				return true
+			for parent, child := range c.Frame.Relations {
+				for _, ch := range child {
+					if ch == worldNumber {
+						c.Frame.Relations[parent] = append(c.Frame.Relations[parent], newNumber)
+					}
+				}
 			}
 
-			return false
+			if !c.Prove(ctx, newNumber, 0, 0, trace) {
+				endAllBox = false
+				break
+			}
 		}
+	}
+
+	if box {
+		if endAllBox {
+			return true
+		}
+
+		for _, v := range continueWorld {
+			delete(c.Frame.Worlds, v)
+		}
+
+		c.Frame.Relations[worldNumber] = nil
+
+		return false
 	}
 
 	return true

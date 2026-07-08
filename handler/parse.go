@@ -52,9 +52,6 @@ func ParseHandler(w http.ResponseWriter, r *http.Request) {
 	bibliothek := solver.NewFormulaBibliothek()
 	ctx := solver.PackBibliothek(r.Context(), bibliothek)
 
-	// Блокируем доступ к парсеру, так как текущая реализация
-	// синтаксического анализатора хранит внутренее состояние и
-	// не гарантирует потокобезопасность
 	mtx.Lock()
 	tokens := syntax.Lex(parserRequest.Formula)
 	parser := syntax.NewParser(tokens)
@@ -75,7 +72,7 @@ func ParseHandler(w http.ResponseWriter, r *http.Request) {
 	conterModel.Frame.Worlds[rootNumber] = rootWorld
 
 	//проверка общезначимости
-	conterexampleCheck := conterModel.Prove(ctx, rootNumber, nil)
+	conterexampleCheck := conterModel.Prove(ctx, rootNumber, 0, 0, nil)
 
 	parserResponse := ParserResponse{
 		Success:             true,
