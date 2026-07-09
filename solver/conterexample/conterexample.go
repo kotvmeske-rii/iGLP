@@ -12,6 +12,12 @@ type Contermodel struct {
 	Frame *solver.KripkeFrame
 }
 
+type Trace struct {
+	WorldNumber int
+	Child       []*Trace
+	Val         map[solver.FormulaNumber]bool
+}
+
 // создаем наш изначальный нулевой мир
 func NewContermodel() *Contermodel {
 	return &Contermodel{
@@ -45,12 +51,12 @@ func (c *Contermodel) Denial(world *solver.ModelWorld) bool {
 
 // true - контпример есть, те есть хотя бы одна открытая ветка,
 // false - контрпримера нет, те все ветки закрыты(логическое противоречие)
-func (c *Contermodel) Prove(ctx context.Context, worldNumber int, t int, f int, trace map[solver.FormulaNumber]struct{}) bool {
+func (c *Contermodel) Prove(ctx context.Context, worldNumber int, t int, f int) (*Trace, bool) {
 	world := c.Frame.Worlds[worldNumber]
 
 	//Step 1: проверка на логическое противоречие
 	if c.Denial(world) {
-		return false //невозможно чтобы формула в мире была одновременно и верна и не верна
+		return nil, false //невозможно чтобы формула в мире была одновременно и верна и не верна
 	}
 
 	bibliothek := solver.GetContext(ctx)
@@ -61,14 +67,14 @@ func (c *Contermodel) Prove(ctx context.Context, worldNumber int, t int, f int, 
 	//проверка противоречий с константой ложь
 	for _, v := range world.TrueFormula {
 		if bibliothek.Key(v).Op == syntax.TokFalse {
-			return false
+			return nil, false
 		}
 	}
 
 	//проверка противоречий с константой истина
 	for _, v := range world.FalseFormula {
 		if bibliothek.Key(v).Op == syntax.TokTrue {
-			return false
+			return nil, false
 		}
 	}
 
@@ -79,7 +85,10 @@ func (c *Contermodel) Prove(ctx context.Context, worldNumber int, t int, f int, 
 		switch key.Op {
 		// Удаление тривиальной константы истина
 		case syntax.TokTrue:
-			return c.Prove(ctx, worldNumber, t+1, f, trace)
+			lang := len(world.TrueFormula)
+			trace, boolean := c.Prove(ctx, worldNumber, t+1, f)
+			world.TrueFormula = world.TrueFormula[:lang]
+			return trace, boolean
 		//true impl
 		//Ветвление на два альтернативных сценария: не A или B
 		case syntax.TokImpl:
@@ -87,30 +96,37 @@ func (c *Contermodel) Prove(ctx context.Context, worldNumber int, t int, f int, 
 			rightKey := key.Right
 
 			//left false
+			langLeft := len(world.FalseFormula)
 			world.FalseFormula = append(world.FalseFormula, leftKey)
-			if c.Prove(ctx, worldNumber, t+1, f, trace) {
-				return true
+			if trace, boolean := c.Prove(ctx, worldNumber, t+1, f); boolean {
+				return trace, true
 			}
 
-			world.FalseFormula = world.FalseFormula[:len(world.FalseFormula)-1]
+			world.FalseFormula = world.FalseFormula[:langLeft]
 
 			//right true
+			langRight := len(world.TrueFormula)
 			world.TrueFormula = append(world.TrueFormula, rightKey)
-			if c.Prove(ctx, worldNumber, t+1, f, trace) {
-				return true
-			}
+			trace, boolean := c.Prove(ctx, worldNumber, t+1, f)
+			world.TrueFormula = world.TrueFormula[:langRight]
 
-			world.TrueFormula = world.TrueFormula[:len(world.TrueFormula)-1]
-
-			return false
+			return trace, boolean
 		//variate true
 		case syntax.TokVar:
+			key, value := world.Valuation[v]
 			world.Valuation[v] = true
-			result := c.Prove(ctx, worldNumber, t+1, f, trace)
-			return result
-		default:
-			return c.Prove(ctx, worldNumber, t+1, f, trace)
+			trace, boolean := c.Prove(ctx, worldNumber, t+1, f)
+
+			if value {
+				world.Valuation[v] = key
+			} else {
+				delete(world.Valuation, v)
+			}
+
+			return trace, boolean
 		}
+
+		return c.Prove(ctx, worldNumber, t+1, f)
 	}
 
 	if f < len(world.FalseFormula) {
@@ -120,42 +136,52 @@ func (c *Contermodel) Prove(ctx context.Context, worldNumber int, t int, f int, 
 		switch key.Op {
 		// Удаление тривиальной константы ложь
 		case syntax.TokFalse:
-			return c.Prove(ctx, worldNumber, t, f+1, trace)
+			lang := len(world.FalseFormula)
+			trace, boolean := c.Prove(ctx, worldNumber, t, f+1)
+			world.FalseFormula = world.FalseFormula[:lang]
+			return trace, boolean
 		//false impl
 		// Импликация ложна iff A истинно,22 B ложно
 		case syntax.TokImpl:
 			leftKey := key.Left
 			rightKey := key.Right
+			langLeft := len(world.TrueFormula)
+			langRight := len(world.FalseFormula)
 
 			world.TrueFormula = append(world.TrueFormula, leftKey)
 			world.FalseFormula = append(world.FalseFormula, rightKey)
 
-			result := c.Prove(ctx, worldNumber, t, f+1, trace)
+			trace, boolean := c.Prove(ctx, worldNumber, t, f+1)
 
-			world.TrueFormula = world.TrueFormula[:len(world.TrueFormula)-1]
-			world.FalseFormula = world.FalseFormula[:len(world.FalseFormula)-1]
+			world.TrueFormula = world.TrueFormula[:langLeft]
+			world.FalseFormula = world.FalseFormula[:langRight]
 
-			return result
+			return trace, boolean
 		//var false
 		case syntax.TokVar:
+			key, value := world.Valuation[v]
 			world.Valuation[v] = false
-			result := c.Prove(ctx, worldNumber, t, f+1, trace)
-			return result
+			trace, boolean := c.Prove(ctx, worldNumber, t, f+1)
+
+			if value {
+				world.Valuation[v] = key
+			} else {
+				delete(world.Valuation, v)
+			}
+
+			return trace, boolean
 		default:
-			return c.Prove(ctx, worldNumber, t, f+1, trace)
+			return c.Prove(ctx, worldNumber, t, f+1)
 		}
 	}
 
-	box := false
-	endAllBox := true
+	var children []*Trace
 
-	continueWorld := make([]int, 0)
 	//Step 3: next world
 	//false box
 	for _, v := range world.FalseFormula {
 		key := bibliothek.Key(v)
 		if key.Op == syntax.TokBox {
-			box = true
 			childNumber := key.Left
 
 			// Новый дотижимый мир
@@ -174,38 +200,42 @@ func (c *Contermodel) Prove(ctx context.Context, worldNumber int, t int, f int, 
 
 			newWorld.TrueFormula = append(newWorld.TrueFormula, v)
 
-			c.Frame.Worlds[newNumber] = newWorld
-			c.Frame.Relations[worldNumber] = append(c.Frame.Relations[worldNumber], newNumber)
-			for parent, child := range c.Frame.Relations {
-				for _, ch := range child {
-					if ch == worldNumber {
-						c.Frame.Relations[parent] = append(c.Frame.Relations[parent], newNumber)
-					}
-				}
-			}
+			kind, ok := c.Prove(ctx, newNumber, 0, 0)
 
-			if !c.Prove(ctx, newNumber, 0, 0, trace) {
-				endAllBox = false
-				break
+			if !ok {
+				return nil, false
 			}
+			children = append(children, kind)
 		}
 	}
 
-	if box {
-		if endAllBox {
-			return true
-		}
+	continueVal := make(map[solver.FormulaNumber]bool)
 
-		for _, v := range continueWorld {
-			delete(c.Frame.Worlds, v)
-		}
-
-		c.Frame.Relations[worldNumber] = nil
-
-		return false
+	for k, value := range world.Valuation {
+		continueVal[k] = value
 	}
 
-	return true
+	return &Trace{
+		WorldNumber: world.Number,
+		Child:       children,
+		Val:         continueVal,
+	}, true
+}
+
+func (c *Contermodel) Sammeln(root *Trace) {
+	if root == nil {
+		return
+	}
+
+	c.Frame.Worlds[root.WorldNumber] = &solver.ModelWorld{
+		Number:    root.WorldNumber,
+		Valuation: root.Val,
+	}
+
+	for _, child := range root.Child {
+		c.Frame.Relations[root.WorldNumber] = append(c.Frame.Relations[root.WorldNumber], child.WorldNumber)
+		c.Sammeln(child)
+	}
 }
 
 // Экспортирует построенную шкалу Крипке

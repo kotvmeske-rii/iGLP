@@ -72,7 +72,11 @@ func ParseHandler(w http.ResponseWriter, r *http.Request) {
 	conterModel.Frame.Worlds[rootNumber] = rootWorld
 
 	//проверка общезначимости
-	conterexampleCheck := conterModel.Prove(ctx, rootNumber, 0, 0, nil)
+	trace, conterexampleCheck := conterModel.Prove(ctx, rootNumber, 0, 0)
+
+	if conterexampleCheck && trace != nil {
+		conterModel.Sammeln(trace)
+	}
 
 	parserResponse := ParserResponse{
 		Success:             true,

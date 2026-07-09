@@ -8,7 +8,7 @@ import (
 
 func CreateTable(ctx context.Context, conn *pgx.Conn) {
 	sqlQuere := `
-	CREATE TABLE formulaBibliothek (
+	CREATE TABLE IF NOT EXIST formulaBibliothek (
 		logik VARCHAR(10) NOT NULL,
 		formula TEXT NOT NULL,
 		ast JSONB NOT NULL,
