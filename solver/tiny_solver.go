@@ -48,7 +48,7 @@ func CheckFormula(ctx context.Context, number FormulaNumber, worldN int, kripkeF
 
 		for _, childWorldN := range achievWorld {
 			if !CheckFormula(ctx, key.Left, childWorldN, kripkeFrame) {
-				//нашли мир где подформула ложна
+				// нашли мир где подформула ложна
 				return false
 			}
 		}
@@ -60,10 +60,11 @@ func CheckFormula(ctx context.Context, number FormulaNumber, worldN int, kripkeF
 		return CheckFormula(ctx, key.Left, worldN, kripkeFrame) ||
 			CheckFormula(ctx, key.Right, worldN, kripkeFrame)
 	case syntax.TokImpl:
-		//Примечание: для интуиционисткой логики определение будет иным
-		//(истинность проверяется во всех достижимых мирах)
+		// Примечание: для интуиционисткой логики определение будет иным
+		// (истинность проверяется во всех достижимых мирах)
 		return !CheckFormula(ctx, key.Left, worldN, kripkeFrame) ||
 			CheckFormula(ctx, key.Right, worldN, kripkeFrame)
+	default:
 	}
 	return false
 }
