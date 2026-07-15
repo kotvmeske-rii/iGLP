@@ -1,1 +1,0 @@
-в conterexample лечить history с помощью map[FormulaNumber]struct{} 
